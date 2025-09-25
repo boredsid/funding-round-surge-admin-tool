@@ -190,7 +190,7 @@
           }
           if (selectedGame.game_type === "solo_win") {
             const winner = soloWinnerId;
-            for (let i = 0; i < n; i++) { const isWinner = ids[i] === winner; baseRows[i].game_score = null; baseRows[i].game_win = winner ? isWinner : null; baseRows[i].overall_score = isWinner ? 40 * n : 60 * n / (n - 1); }
+            for (let i = 0; i < n; i++) { const isWinner = ids[i] === winner; baseRows[i].game_score = null; baseRows[i].game_win = winner ? isWinner : null; baseRows[i].overall_score = isWinner ? 30 * n : 70 * n / (n - 1); }
           }
           if (selectedGame.game_type === "solo_rank") {
             const ranks = ids.map((pid) => clampInt(perPlayerRank[pid]));
