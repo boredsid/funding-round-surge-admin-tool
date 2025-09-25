@@ -365,7 +365,7 @@
                       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {selectedPlayers.map((p) => (
                           <label key={p.player_id} className="rounded-xl bg-neutral-800/60 p-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-800">
-                            <input type="checkbox" className="accent-black-200" checked={Boolean(teamWinnerIds[p.player_id])} onChange={() => toggleTeamWinner(p.player_id)} />
+                            <input type="checkbox" className="accent-green-800" checked={Boolean(teamWinnerIds[p.player_id])} onChange={() => toggleTeamWinner(p.player_id)} />
                             <span>{p.player_name}</span>
                           </label>
                         ))}
