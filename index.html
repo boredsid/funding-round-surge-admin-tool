@@ -222,7 +222,7 @@
           if (!selectedGame) return;
           if (validationError) { pushToast(String(validationError), "error"); return; }
           const playId = uuid();
-          const rows = previewRows.map((r) => ({ entry_id: uuid(), play_id: playId, player_id: r.player_id, game_id: r.game_id, game_score: r.game_score, game_win: r.game_win, overall_score: r.overall_score }));
+          const rows = previewRows.map((r) => ({ entry_id: uuid(), play_id: playId, player_id: r.player_id, game_id: r.game_id, game_score: r.game_score, game_win: r.game_win, overall_score: Math.floor(Number(r.overall_score) || 0) }));
           try {
             setLoading(true);
             const { error } = await supabase.from(TABLE_SCORES).insert(rows);
