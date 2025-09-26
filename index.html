@@ -1,504 +1,481 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Funding Leaderboard</title>
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>BGC x Surge Admin Tool</title>
+    <!-- Tailwind Play CDN (quick preview; fine for local dev) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React 18 UMD -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- Supabase UMD -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <!-- Babel so we can write JSX in-browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>html,body,#root{height:100%}</style>
+  </head>
+  <body class="bg-neutral-950">
+    <div id="root"></div>
 
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+    <script src="./config.js"></script>
+    
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+      // FIX: ReactDOMClient is not available in the UMD build; use ReactDOM.createRoot instead
+      const { createRoot } = ReactDOM;
+      const { createClient } = window.supabase;
 
-  <style>
-    /* IBM Plex Mono fallback */
-    @font-face {
-      font-family: 'IBM Plex Mono';
-      font-style: normal;
-      font-weight: 400;
-      font-display: swap;
-      src: url('https://cdn.jsdelivr.net/gh/IBM/plex@6.0.0/IBM-Plex-Mono/fonts/complete/woff2/IBMPlexMono-Regular.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'IBM Plex Mono';
-      font-style: normal;
-      font-weight: 600;
-      font-display: swap;
-      src: url('https://cdn.jsdelivr.net/gh/IBM/plex@6.0.0/IBM-Plex-Mono/fonts/complete/woff2/IBMPlexMono-SemiBold.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'IBM Plex Mono';
-      font-style: normal;
-      font-weight: 700;
-      font-display: swap;
-      src: url('https://cdn.jsdelivr.net/gh/IBM/plex@6.0.0/IBM-Plex-Mono/fonts/complete/woff2/IBMPlexMono-Bold.woff2') format('woff2');
-    }
+      // === SET THESE ===
+      const SUPABASE_URL = (window.ENV && window.ENV.SUPABASE_URL) || ""; // your URL
+      const SUPABASE_ANON_KEY = (window.ENV && window.ENV.SUPABASE_ANON_KEY) || ""; // your anon key
 
-    :root {
-      --bg: #000000;
-      --panel: #17181b;
-      --header: #1f2025;
-      --line: #2a2b30;
-      --muted: #a1a1aa;
-      --text: #f5f5f6;
-      --accent: #f4d03f;
-      --accent-2: #ffe680;
-      --heading: #ffffff;
-      --radius: 18px;
-      --shadow: 0 10px 30px rgba(0,0,0,.45);
-      --hover: rgba(255, 212, 59, .04);
-    }
+      const TABLE_PLAYERS = "surge-event-players";
+      const TABLE_GAMES = "surge-event-games";
+      const TABLE_SCORES = "surge-event-scores";
 
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-
-    body {
-      margin: 0;
-      font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      color: var(--text);
-      background: var(--bg);
-      letter-spacing: .2px;
-    }
-
-    .wrap { max-width: 1100px; margin: 24px auto 80px auto; padding: 0 16px; }
-
-    /* Header */
-    .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
-    .brand { display: flex; align-items: center; gap: 14px; }
-    h1 { font-size: 20px; margin: 0; letter-spacing: .6px; color: var(--heading); }
-    .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
-    .supabase { color: #3ecf8e; font-weight: 700; }
-
-    /* Buttons */
-    .btn { appearance: none; border: 1px dashed var(--line); background: transparent; color: var(--text); padding: 10px 14px; border-radius: 999px; font-weight: 700; letter-spacing: .3px; box-shadow: var(--shadow); cursor: pointer; }
-    .btn.hidden { display: none; }
-
-    /* Panels */
-    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: clip; }
-
-    /* Two-column leaderboard layout */
-    .twocol { display: grid; gap: 14px; }
-    @media (min-width: 860px) { .twocol { grid-template-columns: 1fr 1fr; } }
-
-    /* Leaderboard table */
-    .table { width: 100%; border-collapse: collapse; }
-    .table thead { background: var(--header); }
-    .table th, .table td { padding: 12px 14px; text-align: left; font-size: 14px; border-bottom: 1px solid var(--line); }
-    .table th { color: var(--text); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
-    .table tr:hover td { background: var(--hover); }
-    .rank-pill { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: var(--header); border: 1px solid var(--line); color: var(--accent); font-weight: 700; font-size: 12px; }
-    .name-link { cursor: pointer; color: var(--text); text-decoration: none; }
-    .name-link:hover { text-decoration: underline; }
-    .strike { text-decoration: line-through; text-decoration-thickness: 2px; }
-
-    /* Personal view */
-    .grid { display: grid; gap: 14px; padding: 16px; }
-    @media (min-width: 800px) { .grid { grid-template-columns: 1.1fr .9fr; } }
-    .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
-    .card h3 { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--header); font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
-    .card .body { padding: 16px; }
-    .kv { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 14px; }
-    .kv .k { color: var(--muted); }
-    .plays { display: grid; gap: 10px; }
-    .play { display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; align-items: center; background: var(--header); border: 1px solid var(--line); padding: 10px 12px; border-radius: 12px; }
-    .tag { font-size: 11px; font-weight: 700; color: #111; background: var(--accent-2); padding: 4px 8px; border-radius: 999px; }
-    .mono { font-variant-numeric: tabular-nums; }
-
-    .hidden { display: none !important; }
-    .empty { color: var(--muted); padding: 24px; text-align: center; }
-
-    /* Logos */
-    .right { display: flex; align-items: center; gap: 12px; }
-    .logos { display: flex; align-items: center; gap: 14px; }
-    .logos img { height: 64px; width: auto; border: none; box-shadow: none; border-radius: 0; }
-    .logos img[alt="BGC logo"] { height: 32px; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="header">
-      <div class="brand">
-        <div>
-          <h1>FUN<span class="strike">DING</span> LEADERBOARD</h1>
-          <div class="sub">Powered by <span class="supabase">Supabase</span></div>
-        </div>
-      </div>
-      <div class="right">
-        <div class="logos">
-          <img src="https://i.ibb.co/vCK5HfJF/BGC-Logo-Final.png" alt="BGC logo" />
-          <img src="https://i.ibb.co/CKhtyb4f/Surge-logo.png" alt="Surge logo" />
-        </div>
-        <button id="toggleView" class="btn hidden">← Back to Leaderboard</button>
-      </div>
-    </div>
-
-    <!-- Leaderboard View (two tables, dynamic rows; no scrolling) -->
-    <div id="leaderboardView" class="twocol">
-      <div class="panel">
-        <table class="table" id="leftTable">
-          <thead>
-            <tr>
-              <th style="width:80px">Rank</th>
-              <th>Name</th>
-              <th style="width:160px" class="mono">Funding Raised</th>
-            </tr>
-          </thead>
-          <tbody id="leaderBodyLeft">
-            <tr><td colspan="3" class="empty">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="panel">
-        <table class="table" id="rightTable">
-          <thead>
-            <tr>
-              <th style="width:80px">Rank</th>
-              <th>Name</th>
-              <th style="width:160px" class="mono">Funding Raised</th>
-            </tr>
-          </thead>
-          <tbody id="leaderBodyRight">
-            <tr><td colspan="3" class="empty">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Personal View -->
-    <div id="personalView" class="hidden">
-      <div class="grid">
-        <div class="card">
-          <h3>Player Summary</h3>
-          <div class="body">
-            <div class="kv">
-              <div class="k">Name</div><div id="pvName"></div>
-              <div class="k">Rank</div><div id="pvRank" class="mono"></div>
-              <div class="k">Funding Raised</div><div id="pvPoints" class="mono"></div>
-              <div class="k">Plays</div><div id="pvPlaysCount" class="mono"></div>
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <h3>Plays (most recent first)</h3>
-          <div class="body">
-            <div id="pvPlays" class="plays"></div>
-          </div>
-        </div>
-      </div>
-      <div class="sub" style="margin-top:10px;">Tip: Use the back button above to return to the full leaderboard.</div>
-    </div>
-  </div>
-
-  <script type="module">
-    // --- Supabase config ---
-    const SUPABASE_URL = 'https://nzrkeuowsypvtdopzxql.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56cmtldW93c3lwdnRkb3B6eHFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgzNDUwMzAsImV4cCI6MjA3MzkyMTAzMH0.2PT5Um86LrfuOKNE8q0etyo6aU5uqO0s7Z_tczTikPM';
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // Tables
-    const TABLE_PLAYERS = 'surge-event-players';
-    const TABLE_SCORES  = 'surge-event-scores';
-    const TABLE_GAMES   = 'surge-event-games';
-
-    // Data caches
-    let leader = [];
-    let scoresCache = [];
-    let gamesById = new Map();
-    let selectedPlayerName = '';
-
-    // dynamic rows (no scrolling on leaderboard view)
-    let cachedRowsPerTable = null;
-    let resizeTimer = null;
-
-    // Utils
-    const normalize = s => (s || '').trim().toLowerCase();
-    const asInt = v => (v === null || v === undefined || v === '') ? 0 : parseInt(v, 10) || 0;
-    const escapeHTML = (str = '') => String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
-    function formatFunding(n) { return asInt(n).toLocaleString('en-US'); }
-    function getGameName(id) { return gamesById.get(id) || 'Unknown game'; }
-
-    async function fetchPlayers() {
-      const { data, error } = await supabase
-        .from(TABLE_PLAYERS)
-        .select('player_id, player_name')
-        .order('player_name', { ascending: true });
-      if (error) throw error; return data || [];
-    }
-
-    async function fetchScores() {
-      const { data, error } = await supabase
-        .from(TABLE_SCORES)
-        .select('entry_id, play_id, player_id, game_id, game_score, game_win, overall_score');
-      if (error) throw error; return data || [];
-    }
-
-    async function fetchGames() {
-      const { data, error } = await supabase
-        .from(TABLE_GAMES)
-        .select('game_id, game_name');
-      if (error) throw error; return data || [];
-    }
-
-    function buildLeaderboard(players, scores) {
-      const totals = new Map();
-      for (const s of scores) {
-        totals.set(s.player_id, (totals.get(s.player_id) || 0) + asInt(s.overall_score));
-      }
-      const rows = players.map(p => ({ player_id: p.player_id, Name: p.player_name, total: totals.get(p.player_id) || 0 }));
-      rows.sort((a, b) => (b.total - a.total) || a.Name.localeCompare(b.Name));
-      return rows;
-    }
-
-    function computeRowsPerTable() {
-      // Measure available height from top of leaderboard to bottom of viewport
-      const lb = document.getElementById('leaderboardView');
-      const leftTable = document.getElementById('leftTable');
-      const leftBody = document.getElementById('leaderBodyLeft');
-      if (!lb || !leftTable || !leftBody) return 20;
-
-      const containerTop = lb.getBoundingClientRect().top;
-      const available = window.innerHeight - containerTop - 24; // breathing room
-
-      // Measure header height
-      const theadH = leftTable.tHead ? leftTable.tHead.getBoundingClientRect().height : 36;
-
-      // Create a temporary row to measure precise row height with current fonts/styles
-      const temp = document.createElement('tr');
-      temp.innerHTML = `
-        <td><span class="rank-pill">88</span></td>
-        <td>Sample Name</td>
-        <td class="mono">9,999</td>`;
-      temp.style.visibility = 'hidden';
-      leftBody.appendChild(temp);
-      const rowH = Math.max(1, temp.getBoundingClientRect().height || 40);
-      leftBody.removeChild(temp);
-
-      // Rows that fit beneath the header
-      const rows = Math.floor((available - theadH - 8) / rowH);
-      return Math.max(1, rows || 1);
-    }
-
-    function renderLeaderboardDynamic() {
-      const leftBody = document.getElementById('leaderBodyLeft');
-      const rightBody = document.getElementById('leaderBodyRight');
-      leftBody.innerHTML = '';
-      rightBody.innerHTML = '';
-
-      const rowsPerTable = computeRowsPerTable();
-      cachedRowsPerTable = rowsPerTable;
-
-      const maxItems = rowsPerTable * 2; // two tables
-      const rows = leader.map((p, idx) => ({ ...p, __rank: idx + 1 })).slice(0, maxItems);
-
-      if (!rows.length) {
-        leftBody.innerHTML = `<tr><td colspan="3" class="empty">No players found.</td></tr>`;
-        rightBody.innerHTML = `<tr><td colspan="3" class="empty">—</td></tr>`;
-        return;
-      }
-
-      const leftRows = rows.slice(0, rowsPerTable);
-      const rightRows = rows.slice(rowsPerTable, rowsPerTable * 2);
-
-      for (const p of leftRows) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><span class="rank-pill">${p.__rank}</span></td>
-          <td><a class="name-link" data-name="${encodeURIComponent(p['Name'])}">${p['Name']}</a></td>
-          <td class="mono">${formatFunding(p.total)}</td>
-        `;
-        tr.querySelector('.name-link').addEventListener('click', () => openPersonalView(p['Name']));
-        leftBody.appendChild(tr);
-      }
-      for (const p of rightRows) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><span class="rank-pill">${p.__rank}</span></td>
-          <td><a class="name-link" data-name="${encodeURIComponent(p['Name'])}">${p['Name']}</a></td>
-          <td class="mono">${formatFunding(p.total)}</td>
-        `;
-        tr.querySelector('.name-link').addEventListener('click', () => openPersonalView(p['Name']));
-        rightBody.appendChild(tr);
-      }
-    }
-
-    function setOverflowHiddenForLeaderboard(on) {
-      const val = on ? 'hidden' : '';
-      document.documentElement.style.overflow = val;
-      document.body.style.overflow = val;
-    }
-
-    function handleResize() {
-      if (!document.getElementById('leaderboardView').classList.contains('hidden')) {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-          const before = cachedRowsPerTable;
-          renderLeaderboardDynamic();
-          if (cachedRowsPerTable !== before) setOverflowHiddenForLeaderboard(true);
-        }, 120);
-      }
-    }
-    window.addEventListener('resize', handleResize);
-
-    function openPersonalView(name) {
-      const idx = leader.findIndex(p => normalize(p['Name']) === normalize(name));
-      if (idx === -1) return;
-      const row = leader[idx];
-      const rank = idx + 1;
-      selectedPlayerName = row['Name'];
-
-      document.getElementById('pvName').textContent   = row['Name'];
-      document.getElementById('pvRank').textContent   = `#${rank}`;
-      document.getElementById('pvPoints').textContent = formatFunding(row.total);
-
-      const myScores = scoresCache.filter(s => s.player_id === row.player_id);
-      document.getElementById('pvPlaysCount').textContent = String(myScores.length);
-
-      const playsEl = document.getElementById('pvPlays');
-      playsEl.innerHTML = '';
-      const display = [...myScores].reverse();
-      if (!display.length) {
-        playsEl.innerHTML = `<div class="empty">No plays recorded yet.</div>`;
-      } else {
-        display.forEach((s, i) => {
-          const gameName = escapeHTML(getGameName(s.game_id));
-          const div = document.createElement('div');
-          div.className = 'play';
-          div.innerHTML = `
-            <div><span class="tag">Play ${display.length - i}</span></div>
-            <div>
-              <div><strong>Game:</strong> ${gameName}</div>
-              <div class="mono" style="margin-top:4px;"><strong>Overall:</strong> ${asInt(s.overall_score)}${s.game_score!=null?` · <strong>Game Score:</strong> ${asInt(s.game_score)}`:''}${s.game_win!=null?` · <strong>Win:</strong> ${s.game_win?'Yes':'No'}`:''}</div>
-            </div>
-          `;
-          playsEl.appendChild(div);
+      function uuid() {
+        if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
         });
       }
-
-      document.getElementById('leaderboardView').classList.add('hidden');
-      document.getElementById('personalView').classList.remove('hidden');
-      document.getElementById('toggleView').classList.remove('hidden');
-      setOverflowHiddenForLeaderboard(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    function backToLeaderboard() {
-      document.getElementById('personalView').classList.add('hidden');
-      document.getElementById('leaderboardView').classList.remove('hidden');
-      document.getElementById('toggleView').classList.add('hidden');
-      renderLeaderboardDynamic();
-      setOverflowHiddenForLeaderboard(true);
-    }
-
-    async function loadAll() {
-      try {
-        document.getElementById('leaderBodyLeft').innerHTML = `<tr><td colspan="3" class="empty">Loading…</td></tr>`;
-        document.getElementById('leaderBodyRight').innerHTML = `<tr><td colspan="3" class="empty">Loading…</td></tr>`;
-
-        const [players, scores, games] = await Promise.all([
-          fetchPlayers(),
-          fetchScores(),
-          fetchGames(),
-        ]);
-
-        scoresCache = scores;
-        gamesById = new Map(games.map(g => [g.game_id, g.game_name]));
-        leader = buildLeaderboard(players, scores);
-        renderLeaderboardDynamic();
-        setOverflowHiddenForLeaderboard(true);
-
-        // If personal view was open, re-open same player after reload
-        const pvVisible = !document.getElementById('personalView').classList.contains('hidden');
-        if (pvVisible && selectedPlayerName) {
-          const exists = leader.some(p => normalize(p['Name']) === normalize(selectedPlayerName));
-          if (exists) openPersonalView(selectedPlayerName); else backToLeaderboard();
-        }
-
-        // ---------------------------
-        // Simple runtime tests (console)
-        // ---------------------------
-        runSelfTests();
-      } catch (err) {
-        console.error(err);
-        document.getElementById('leaderBodyLeft').innerHTML = `<tr><td colspan="3" class="empty">Failed to load from Supabase.</td></tr>`;
-        document.getElementById('leaderBodyRight').innerHTML = `<tr><td colspan="3" class="empty">Check URL, anon key, table names & RLS policies.</td></tr>`;
+      function clampInt(n) {
+        if (n === null || n === undefined || n === "") return 0;
+        const v = Number(n);
+        return Number.isFinite(v) ? Math.floor(v) : 0;
       }
-    }
-
-    // --- Auto-refresh every 60s (with safeguards) ---
-    let refreshTimer = null;
-    let refreshInFlight = false;
-
-    function startAutoRefresh() {
-      // clear any previous timer (hot reload / multiple inits safety)
-      if (refreshTimer) clearInterval(refreshTimer);
-
-      refreshTimer = setInterval(async () => {
-        // Don't refetch if tab is hidden or a refresh is already running
-        if (document.hidden || refreshInFlight) return;
-
-        refreshInFlight = true;
-        try {
-          await loadAll();
-        } finally {
-          refreshInFlight = false;
-        }
-      }, 60_000); // 60s
-    }
-
-    // Refresh once when user returns to the tab or comes back online
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) loadAll();
-    });
-    window.addEventListener('online', loadAll);
-
-    // Optional: clean up if you ever tear down the page
-    window.addEventListener('beforeunload', () => {
-      if (refreshTimer) clearInterval(refreshTimer);
-    });
-
-
-    // Back button
-    document.getElementById('toggleView').addEventListener('click', backToLeaderboard);
-
-    // Initial load
-    loadAll().finally(startAutoRefresh);
-
-    // ---------------------------
-    // Test helpers
-    // ---------------------------
-    function countRows(el) {
-      return el ? el.querySelectorAll('tr').length : 0;
-    }
-
-    function hasVerticalScroll() {
-      const doc = document.documentElement;
-      return doc.scrollHeight - 1 > window.innerHeight; // small tolerance
-    }
-
-    function runSelfTests() {
-      try {
-        const rpt = computeRowsPerTable();
-        console.assert(Number.isInteger(rpt) && rpt >= 1, 'Rows per table should be >= 1');
-
-        // Only test scroll when leaderboard is visible
-        const lbVisible = !document.getElementById('leaderboardView').classList.contains('hidden');
-        if (lbVisible) {
-          console.assert(!hasVerticalScroll(), 'Leaderboard view should not vertically scroll');
-        }
-
-        const leftCnt = countRows(document.getElementById('leaderBodyLeft'));
-        const rightCnt = countRows(document.getElementById('leaderBodyRight'));
-        const totalCnt = leftCnt + rightCnt;
-        console.assert(leftCnt <= rpt && rightCnt <= rpt, 'Each table should render at most rowsPerTable rows');
-        console.assert(totalCnt <= rpt * 2, 'Total rows should be at most 2 * rowsPerTable');
-      } catch (e) {
-        console.warn('Self-tests encountered an issue:', e);
+      function largestRemainderIntegerAllocation(rawShares, total) {
+        const floors = rawShares.map((x) => Math.floor(x));
+        let remainder = total - floors.reduce((a, b) => a + b, 0);
+        const fracs = rawShares.map((x, i) => ({ i, frac: x - Math.floor(x) }));
+        fracs.sort((a, b) => b.frac - a.frac);
+        const result = [...floors];
+        for (let k = 0; k < remainder; k++) result[fracs[k % fracs.length].i] += 1;
+        return result;
       }
-    }
-  </script>
-</body>
+      function computeRatioOverallPoints(scores) {
+        const n = scores.length;
+        const totalPoints = 100 * n;
+        const anyZero = scores.some((s) => s === 0);
+        const sum = scores.reduce((a, b) => a + b, 0);
+        const avg = n > 0 ? sum / n : 0;
+        const effective = anyZero ? scores.map((s) => s + avg) : scores.slice();
+        const effSum = effective.reduce((a, b) => a + b, 0);
+        if (effSum === 0) return Array(n).fill(Math.floor(totalPoints / n));
+        const raw = effective.map((e) => (totalPoints * e) / effSum);
+        return largestRemainderIntegerAllocation(raw, totalPoints);
+      }
+      function computeOverallForTeamWin(n, w, l, winnerFlags) {
+        const rawPerWinner = w > 0 ? (60 * n) / w : 0;
+        const rawPerLoser = l > 0 ? (40 * n) / l : 0;
+        const raw = winnerFlags.map((isW) => (isW ? rawPerWinner : rawPerLoser));
+        if (w === 0 || l === 0) return Array(n).fill(100);
+        return largestRemainderIntegerAllocation(raw, 100 * n);
+      }
+      function computeOverallForCoop(n, achieved, maxLevel) {
+        const val = maxLevel > 0 ? Math.floor((100 * achieved) / maxLevel) : 0;
+        return Array(n).fill(val);
+      }
+
+      function App() {
+        const supabase = useMemo(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY), []);
+
+        const [loading, setLoading] = useState(false);
+        const [games, setGames] = useState([]);
+        const [players, setPlayers] = useState([]);
+
+        const [selectedGameId, setSelectedGameId] = useState("");
+        const selectedGame = games.find((g) => g.game_id === selectedGameId) || null;
+        const gameType = selectedGame ? selectedGame.game_type : null;
+
+        const [playerFilter, setPlayerFilter] = useState("");
+        const [gameFilter, setGameFilter] = useState("");
+        const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
+
+        const [toast, setToast] = useState(null);
+        function pushToast(message, type = "info") {
+          const id = uuid();
+          setToast({ id, type, message });
+          setTimeout(() => setToast((t) => (t && t.id === id ? null : t)), 3500);
+        }
+
+        const [perPlayerScore, setPerPlayerScore] = useState({});
+        const [perPlayerRank, setPerPlayerRank] = useState({});
+        const [soloWinnerId, setSoloWinnerId] = useState("");
+        const [teamWinnerIds, setTeamWinnerIds] = useState({});
+        const [coopAchieved, setCoopAchieved] = useState(0);
+        const [coopMax, setCoopMax] = useState(0);
+
+        const selectedPlayers = React.useMemo(() => {
+          const set = new Set(selectedPlayerIds);
+          return players.filter((p) => set.has(p.player_id));
+        }, [selectedPlayerIds, players]);
+
+        useEffect(() => {
+          (async () => {
+            setLoading(true);
+            try {
+              const { data: gData, error: gErr } = await supabase
+                .from(TABLE_GAMES)
+                .select("game_id, game_name, game_type")
+                .order("game_name", { ascending: true });
+              if (gErr) throw gErr;
+              setGames(gData || []);
+
+              const { data: pData, error: pErr } = await supabase
+                .from(TABLE_PLAYERS)
+                .select("player_id, player_name")
+                .order("player_name", { ascending: true });
+              if (pErr) throw pErr;
+              setPlayers(pData || []);
+            } catch (e) {
+              console.error(e);
+              pushToast("Failed to fetch data from Supabase. Check URL/key and RLS.", "error");
+            } finally {
+              setLoading(false);
+            }
+          })();
+        }, [supabase]);
+
+        function togglePlayer(pid) {
+          setSelectedPlayerIds((prev) =>
+            prev.includes(pid) ? prev.filter((x) => x !== pid) : [...prev, pid]
+          );
+        }
+        function toggleTeamWinner(pid) { setTeamWinnerIds((prev) => ({ ...prev, [pid]: !prev[pid] })); }
+        function resetInputsForGameType() {
+          setPerPlayerScore({}); setPerPlayerRank({}); setSoloWinnerId(""); setTeamWinnerIds({}); setCoopAchieved(0); setCoopMax(0);
+        }
+        useEffect(() => { resetInputsForGameType(); }, [gameType]);
+
+        const n = selectedPlayers.length;
+        const winnersCount = Object.values(teamWinnerIds).filter(Boolean).length;
+
+        let validationError = null;
+        if (!selectedGame && selectedGameId) validationError = "Selected game not found.";
+        else if (selectedGame && n === 0) validationError = "Please select at least one player.";
+        else if (gameType === "solo_win") {
+          if (!soloWinnerId) validationError = "Please select the winning player.";
+          if (soloWinnerId && !selectedPlayerIds.includes(soloWinnerId)) validationError = "Winner must be among the selected players.";
+        } else if (gameType === "solo_rank") {
+          const ranks = selectedPlayers.map((p) => clampInt(perPlayerRank[p.player_id]));
+          if (ranks.some((r) => r < 1 || r > n)) validationError = "All ranks must be between 1 and n.";
+          const uniq = new Set(ranks);
+          if (uniq.size !== n) validationError = "Ranks must be unique (1..n).";
+        } else if (gameType === "team_win") {
+          if (winnersCount === 0) validationError = "Select at least one winning player.";
+          if (winnersCount === n) validationError = "All players cannot be winners; at least one loser is required.";
+        } else if (gameType === "cooperative") {
+          if (!(coopMax > 0)) validationError = "Max level must be > 0.";
+          if (coopAchieved < 0) validationError = "Achieved level cannot be negative.";
+          if (coopAchieved > coopMax) validationError = "Achieved level cannot exceed max level.";
+        }
+
+        const previewRows = React.useMemo(() => {
+          if (!selectedGame || n === 0) return [];
+          const playId = uuid();
+          const baseRows = selectedPlayers.map((p) => ({
+            entry_id: uuid(), play_id: playId, player_id: p.player_id, game_id: selectedGame.game_id,
+            game_score: null, game_win: null, overall_score: 0, player_name: p.player_name,
+          }));
+          const ids = selectedPlayers.map((p) => p.player_id);
+
+          if (selectedGame.game_type === "solo_scored") {
+            const scores = ids.map((pid) => Math.max(0, clampInt(perPlayerScore[pid])));
+            const overall = computeRatioOverallPoints(scores);
+            for (let i = 0; i < n; i++) { baseRows[i].game_score = scores[i]; baseRows[i].game_win = null; baseRows[i].overall_score = overall[i]; }
+          }
+          if (selectedGame.game_type === "solo_win") {
+            const winner = soloWinnerId;
+            for (let i = 0; i < n; i++) { const isWinner = ids[i] === winner; baseRows[i].game_score = null; baseRows[i].game_win = winner ? isWinner : null; baseRows[i].overall_score = isWinner ? 30 * n : 70 * n / (n - 1); }
+          }
+          if (selectedGame.game_type === "solo_rank") {
+            const ranks = ids.map((pid) => clampInt(perPlayerRank[pid]));
+            const gameScores = ranks.map((r) => (r >= 1 && r <= n ? n - (r - 1) : 0));
+            const overall = computeRatioOverallPoints(gameScores);
+            for (let i = 0; i < n; i++) { baseRows[i].game_score = gameScores[i]; baseRows[i].game_win = null; baseRows[i].overall_score = overall[i]; }
+          }
+          if (selectedGame.game_type === "team_scored") {
+            const scores = ids.map((pid) => Math.max(0, clampInt(perPlayerScore[pid])));
+            const overall = computeRatioOverallPoints(scores);
+            for (let i = 0; i < n; i++) { baseRows[i].game_score = scores[i]; baseRows[i].game_win = null; baseRows[i].overall_score = overall[i]; }
+          }
+          if (selectedGame.game_type === "team_win") {
+            const winnerFlags = ids.map((pid) => Boolean(teamWinnerIds[pid]));
+            const w = winnerFlags.filter(Boolean).length; const l = n - w;
+            const overall = computeOverallForTeamWin(n, w, l, winnerFlags);
+            for (let i = 0; i < n; i++) { baseRows[i].game_score = null; baseRows[i].game_win = winnerFlags[i]; baseRows[i].overall_score = overall[i]; }
+          }
+          if (selectedGame.game_type === "cooperative") {
+            const achieved = clampInt(coopAchieved);
+            const maxLevel = clampInt(coopMax);
+            const overall = computeOverallForCoop(n, achieved, maxLevel);
+            for (let i = 0; i < n; i++) { baseRows[i].game_score = achieved; baseRows[i].game_win = null; baseRows[i].overall_score = overall[i]; }
+          }
+          return baseRows;
+        }, [selectedGame, n, selectedPlayers, perPlayerScore, perPlayerRank, soloWinnerId, teamWinnerIds, coopAchieved, coopMax]);
+
+        async function handleSubmit() {
+          if (!selectedGame) return;
+          if (validationError) { pushToast(String(validationError), "error"); return; }
+          const playId = uuid();
+          const rows = previewRows.map((r) => ({ entry_id: uuid(), play_id: playId, player_id: r.player_id, game_id: r.game_id, game_score: r.game_score, game_win: r.game_win, overall_score: r.overall_score }));
+          try {
+            setLoading(true);
+            const { error } = await supabase.from(TABLE_SCORES).insert(rows);
+            if (error) throw error;
+            pushToast(`Saved ${rows.length} rows with play_id ${playId}`, "success");
+            setSelectedPlayerIds([]); resetInputsForGameType();
+          } catch (e) {
+            console.error(e);
+            pushToast(`Insert failed: ${e && e.message ? e.message : e}`, "error");
+          } finally {
+            setLoading(false);
+          }
+        }
+
+        const filteredPlayers = players.filter((p) => p.player_name.toLowerCase().includes(playerFilter.toLowerCase()));
+        const filteredGames = games.filter((g) => g.game_name.toLowerCase().includes(gameFilter.toLowerCase()));
+
+        return (
+          <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 p-4 md:p-8">
+            <div className="mx-auto max-w-5xl space-y-6">
+              {/* Step 1: Select Game */}
+              <div className="rounded-2xl border border-neutral-800 p-4 md:p-6 bg-neutral-900/50 space-y-3">
+                <h2 className="text-xl font-semibold">1) Choose a game</h2>
+                <div className="flex items-center gap-3">
+                  <input disabled={loading} className="flex-1 rounded-xl bg-neutral-800 px-3 py-2 outline-none" placeholder="Search games" value={gameFilter} onChange={(e) => setGameFilter(e.target.value)} />
+                  {selectedGame && (
+                    <button className="rounded-xl bg-neutral-800 px-3 py-2 hover:bg-neutral-700 active:scale-[0.98]" onClick={() => setSelectedGameId("")}>Clear</button>
+                  )}
+                </div>
+                {selectedGame && (
+                  <div className="flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-neutral-800 px-3 py-1.5 text-sm">
+                      <span>{selectedGame.game_name} ({selectedGame.game_type})</span>
+                      <button className="rounded-full bg-neutral-700 hover:bg-neutral-600 w-5 h-5 flex items-center justify-center text-xs" onClick={() => setSelectedGameId("")}>×</button>
+                    </span>
+                  </div>
+                )}
+                <div className="rounded-xl bg-neutral-900/60 border border-neutral-800 max-h-72 overflow-auto">
+                  {filteredGames.length === 0 && (<div className="text-sm text-neutral-500 px-3 py-2">No games found.</div>)}
+                  <ul className="divide-y divide-neutral-800">
+                    {filteredGames.map((g) => (
+                      <li key={g.game_id}>
+                        <button onClick={() => setSelectedGameId(g.game_id)} className={`w-full text-left px-3 py-2 hover:bg-neutral-800 ${selectedGameId === g.game_id ? "bg-neutral-800 ring-2 ring-emerald-500" : ""}`}>
+                          {g.game_name} <span className="text-xs text-neutral-400">({g.game_type})</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Step 2: Select Players */}
+              <div className="rounded-2xl border border-neutral-800 p-4 md:p-6 bg-neutral-900/50 space-y-3">
+                <h2 className="text-xl font-semibold">2) Select players</h2>
+                <div className="flex items-center gap-3">
+                  <input className="flex-1 rounded-xl bg-neutral-800 px-3 py-2 outline-none" placeholder="Search players" value={playerFilter} onChange={(e) => setPlayerFilter(e.target.value)} />
+                  <button className="rounded-xl bg-neutral-800 px-3 py-2 hover:bg-neutral-700 active:scale-[0.98]" onClick={() => setSelectedPlayerIds([])}>Clear</button>
+                </div>
+                <div className="flex flex-wrap gap-2 min-h-[2rem]">
+                  {selectedPlayers.map((p) => (
+                    <span key={p.player_id} className="inline-flex items-center gap-2 rounded-full bg-neutral-800 px-3 py-1.5 text-sm">
+                      <span>{p.player_name}</span>
+                      <button className="rounded-full bg-neutral-700 hover:bg-neutral-600 w-5 h-5 flex items-center justify-center text-xs" onClick={() => togglePlayer(p.player_id)}>×</button>
+                    </span>
+                  ))}
+                  {selectedPlayers.length > 0 && (
+                    <button className="text-xs text-neutral-400 hover:underline" onClick={() => setSelectedPlayerIds([])}>Clear all</button>
+                  )}
+                </div>
+                <div className="rounded-xl bg-neutral-900/60 border border-neutral-800 max-h-72 overflow-auto">
+                  {filteredPlayers.length === 0 && (<div className="text-sm text-neutral-500 px-3 py-2">No players found.</div>)}
+                  <ul className="divide-y divide-neutral-800">
+                    {filteredPlayers.map((p) => {
+                      const selected = selectedPlayerIds.includes(p.player_id);
+                      return (
+                        <li key={p.player_id}>
+                          <button type="button" onClick={() => togglePlayer(p.player_id)} className={`w-full text-left px-3 py-2 hover:bg-neutral-800 ${selected ? "bg-neutral-800 ring-2 ring-emerald-500" : ""}`}>{p.player_name}</button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+                <p className="text-sm text-neutral-400">Selected: {n}</p>
+              </div>
+
+              {/* Step 3: Type-specific inputs */}
+              {selectedGame && (
+                <div className="rounded-2xl border border-neutral-800 p-4 md:p-6 bg-neutral-900/50 space-y-3">
+                  <h2 className="text-xl font-semibold">3) Enter results</h2>
+
+                  {(gameType === "solo_scored" || gameType === "team_scored") && (
+                    <div className="space-y-3">
+                      <div className="text-sm text-neutral-400">
+                        Enter the score for each player{gameType === "team_scored" ? ", team members should share the same score." : "."}
+                      </div>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedPlayers.map((p) => (
+                          <div key={p.player_id} className="rounded-xl bg-neutral-800/60 p-3">
+                            <div className="text-sm mb-2">{p.player_name}</div>
+                            <input type="number" inputMode="numeric" className="w-full rounded-lg bg-neutral-900 px-3 py-2 outline-none" value={perPlayerScore[p.player_id] ?? ""} onChange={(e) => setPerPlayerScore((prev) => ({ ...prev, [p.player_id]: clampInt(e.target.value) }))} placeholder="Score" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {gameType === "solo_win" && (
+                    <div className="space-y-2">
+                      <div className="text-sm text-neutral-400">Select the winner</div>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedPlayers.map((p) => (
+                          <label key={p.player_id} className="rounded-xl bg-neutral-800/60 p-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-800">
+                            <input type="radio" name="solo_winner" className="accent-green-500" checked={soloWinnerId === p.player_id} onChange={() => setSoloWinnerId(p.player_id)} />
+                            <span>{p.player_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {gameType === "solo_rank" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm text-neutral-400 flex-1">Enter rank for each player (1 = best). Ranks must be unique.</div>
+                        <button className="rounded-xl bg-neutral-800 px-3 py-2 hover:bg-neutral-700 active:scale-[0.98]" onClick={() => { const next = {}; selectedPlayers.forEach((p, i) => (next[p.player_id] = i + 1)); setPerPlayerRank(next); }}>Auto 1..n</button>
+                      </div>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-3">
+                        {selectedPlayers.map((p) => (
+                          <div key={p.player_id} className="rounded-xl bg-neutral-800/60 p-3">
+                            <div className="text-sm mb-2">{p.player_name}</div>
+                            <input type="number" inputMode="numeric" className="w-full rounded-lg bg-neutral-900 px-3 py-2 outline-none" value={perPlayerRank[p.player_id] ?? ""} onChange={(e) => setPerPlayerRank((prev) => ({ ...prev, [p.player_id]: clampInt(e.target.value) }))} placeholder={`Rank (1..${n || 1})`} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {gameType === "team_win" && (
+                    <div className="space-y-2">
+                      <div className="text-sm text-neutral-400">Select all players on the winning team</div>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedPlayers.map((p) => (
+                          <label key={p.player_id} className="rounded-xl bg-neutral-800/60 p-3 flex items-center gap-3 cursor-pointer hover:bg-neutral-800">
+                            <input type="checkbox" className="accent-green-500" checked={Boolean(teamWinnerIds[p.player_id])} onChange={() => toggleTeamWinner(p.player_id)} />
+                            <span>{p.player_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {gameType === "cooperative" && (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl bg-neutral-800/60 p-3">
+                        <label className="block text-sm mb-2">Achieved level</label>
+                        <input type="number" inputMode="numeric" className="w-full rounded-lg bg-neutral-900 px-3 py-2 outline-none" value={coopAchieved} onChange={(e) => setCoopAchieved(clampInt(e.target.value))} placeholder="e.g., 3" />
+                      </div>
+                      <div className="rounded-xl bg-neutral-800/60 p-3">
+                        <label className="block text-sm mb-2">Max level</label>
+                        <input type="number" inputMode="numeric" className="w-full rounded-lg bg-neutral-900 px-3 py-2 outline-none" value={coopMax} onChange={(e) => setCoopMax(clampInt(e.target.value))} placeholder="e.g., 4" />
+                      </div>
+                    </div>
+                  )}
+
+                  {validationError && (<div className="text-rose-400 text-sm">{validationError}</div>)}
+                </div>
+              )}
+
+              {previewRows.length > 0 && (
+                <div className="rounded-2xl border border-neutral-800 p-4 md:p-6 bg-neutral-900/50 space-y-3">
+                  <h2 className="text-xl font-semibold">Preview rows</h2>
+                  <div className="overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-neutral-900/80 backdrop-blur">
+                        <tr className="text-left text-neutral-400">
+                          <th className="py-2 pr-3">Player</th>
+                          <th className="py-2 pr-3">game_score</th>
+                          <th className="py-2 pr-3">game_win</th>
+                          <th className="py-2 pr-3">overall_score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewRows.map((r) => (
+                          <tr key={r.player_id} className="border-t border-neutral-800">
+                            <td className="py-2 pr-3">{r.player_name}</td>
+                            <td className="py-2 pr-3">{r.game_score === null ? "—" : r.game_score}</td>
+                            <td className="py-2 pr-3">{r.game_win === null ? "—" : r.game_win ? "true" : "false"}</td>
+                            <td className="py-2 pr-3">{r.overall_score}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex items-center justify-end gap-3">
+                    <button disabled={!!validationError || loading} onClick={handleSubmit} className="rounded-xl bg-emerald-500/90 hover:bg-emerald-500 text-black font-semibold px-4 py-2 active:scale-[0.98] disabled:opacity-50">{loading ? "Saving…" : `Submit (${previewRows.length})`}</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs text-neutral-500 text-center pb-8">Built for Surge event scoring · Ensure RLS allows SELECT on players/games and INSERT on scores.</div>
+
+              {toast && (
+                <div className="fixed bottom-4 right-4 z-50">
+                  <div className={`rounded-xl px-4 py-3 shadow-xl ${toast.type === "success" ? "bg-emerald-500 text-black" : toast.type === "error" ? "bg-rose-500 text-white" : "bg-neutral-700 text-white"}`}>{toast.message}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // Self-tests (existing + additional edge cases)
+      function runSelfTests() {
+        const sum = (arr) => arr.reduce((a, b) => a + b, 0);
+
+        // Existing tests
+        const lr = largestRemainderIntegerAllocation([10.2, 9.8], 20);
+        console.assert(sum(lr) === 20, "LR method should sum to total");
+
+        let pts = computeRatioOverallPoints([10, 20, 30]);
+        console.assert(JSON.stringify(pts) === JSON.stringify([50, 100, 150]), "ratio points (10,20,30)");
+
+        pts = computeRatioOverallPoints([0, 10, 20]);
+        console.assert(JSON.stringify(pts) === JSON.stringify([50, 100, 150]), "ratio points with zero smoothing");
+
+        const team = computeOverallForTeamWin(6, 4, 2, [true, true, true, true, false, false]);
+        console.assert(sum(team) === 600, "team_win total = 100*n");
+
+        const coop = computeOverallForCoop(3, 3, 4);
+        console.assert(JSON.stringify(coop) === JSON.stringify([225, 225, 225]), "coop example");
+
+        // Additional tests
+        // 1) Ratio points all zeros -> equal split
+        const allZero = computeRatioOverallPoints([0, 0, 0, 0]);
+        console.assert(JSON.stringify(allZero) === JSON.stringify([100, 100, 100, 100]), "all-zero scores split equally");
+
+        // 2) Team win degenerate cases -> equal 100 each
+        const allWinners = computeOverallForTeamWin(3, 3, 0, [true, true, true]);
+        console.assert(JSON.stringify(allWinners) === JSON.stringify([100, 100, 100]), "all winners -> 100 each");
+        const allLosers = computeOverallForTeamWin(3, 0, 3, [false, false, false]);
+        console.assert(JSON.stringify(allLosers) === JSON.stringify([100, 100, 100]), "all losers -> 100 each");
+
+        // 3) Coop with maxLevel 0 -> zeros
+        const coopZero = computeOverallForCoop(2, 1, 0);
+        console.assert(JSON.stringify(coopZero) === JSON.stringify([0, 0]), "coop max=0 -> zeros");
+
+        // 4) clampInt edge cases
+        console.assert(clampInt("") === 0 && clampInt(null) === 0 && clampInt(undefined) === 0, "clampInt empty/null/undefined -> 0");
+        console.assert(clampInt("5.6") === 6 && clampInt("-2.2") === -2, "clampInt rounds to nearest int");
+      }
+      try { runSelfTests(); } catch(e) { console.warn("Self-tests failed:", e); }
+
+      createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
 </html>
